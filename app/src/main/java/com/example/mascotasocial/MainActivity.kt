@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -36,13 +37,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.outlined.ChatBubble
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.tooling.preview.Preview
 import com.example.mascotasocial.ui.theme.MascotaSocialTheme
 
 class MainActivity : ComponentActivity() {
@@ -90,77 +90,80 @@ fun MainScreen() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Pets,
-                            contentDescription = null,
-                            tint = Color(0xFF964300),
-                            modifier = Modifier.size(28.dp)
-                        )
-                            Spacer(Modifier.width(8.dp))
+    Row(modifier = Modifier.fillMaxSize()) {
+        // Menú Lateral (Navigation Rail)
+        NavigationRail(
+            containerColor = Color.White,
+            header = {
+                Icon(
+                    Icons.Default.Pets,
+                    contentDescription = null,
+                    tint = Color(0xFF964300),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .padding(vertical = 12.dp)
+                )
+            }
+        ) {
+            val screens = listOf(Screen.Home, Screen.Photos, Screen.Videos, Screen.Profile)
+            screens.forEach { screen ->
+                NavigationRailItem(
+                    selected = currentRoute == screen.route,
+                    onClick = {
+                        if (currentRoute != screen.route) {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.startDestinationId)
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    icon = { Icon(screen.icon, null) },
+                    label = { Text(screen.label) }
+                )
+            }
+        }
+
+        // Contenido Principal
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
                         Text(
                             "MascotaSocial",
                             fontWeight = FontWeight.Black,
                             color = Color(0xFF964300),
                             fontSize = 22.sp
                         )
+                    },
+                    actions = {
+                        IconButton(onClick = { }) {
+                            Icon(Icons.Default.Notifications, contentDescription = null)
+                        }
                     }
-                },
-                actions = {
-                    IconButton(onClick = { }) {
-                        Icon(Icons.Default.Notifications, contentDescription = null)
-                    }
-                }
-            )
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = Color.White,
-                tonalElevation = 8.dp
-            ) {
-                val screens = listOf(Screen.Home, Screen.Photos, Screen.Videos, Screen.Profile)
-                screens.forEach { screen ->
-                    NavigationBarItem(
-                        selected = currentRoute == screen.route,
-                        onClick = {
-                            if (currentRoute != screen.route) {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.startDestinationId)
-                                    launchSingleTop = true
-                                }
-                            }
-                        },
-                        icon = { Icon(screen.icon, null) },
-                        label = { Text(screen.label) }
-                    )
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { navController.navigate(Screen.AddVideo.route) },
+                    containerColor = Color(0xFF964300),
+                    contentColor = Color.White,
+                    shape = CircleShape
+                ) {
+                    Icon(Icons.Default.AddAPhoto, null)
                 }
             }
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { navController.navigate(Screen.AddVideo.route) },
-                containerColor = Color(0xFF964300),
-                contentColor = Color.White,
-                shape = CircleShape
+        ) { padding ->
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Home.route,
+                modifier = Modifier.padding(padding)
             ) {
-                Icon(Icons.Default.AddAPhoto, null)
+                composable(Screen.Home.route) { HomeScreen() }
+                composable(Screen.Photos.route) { PhotosScreen() }
+                composable(Screen.Videos.route) { VideosScreen() }
+                composable(Screen.Profile.route) { ProfileScreen() }
+                composable(Screen.AddVideo.route) { AddVideoScreen(onBack = { navController.popBackStack() }) }
             }
-        }
-    ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Home.route,
-            modifier = Modifier.padding(padding)
-        ) {
-            composable(Screen.Home.route) { HomeScreen() }
-            composable(Screen.Photos.route) { PhotosScreen() }
-            composable(Screen.Videos.route) { VideosScreen() }
-            composable(Screen.Profile.route) { ProfileScreen() }
-            composable(Screen.AddVideo.route) { AddVideoScreen(onBack = { navController.popBackStack() }) }
         }
     }
 }
@@ -314,7 +317,7 @@ fun PostCard(photo: Photo) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PhotosScreen() {
     var activeCategory by remember { mutableStateOf("Todos") }
@@ -576,7 +579,7 @@ fun AddVideoScreen(onBack: () -> Unit) {
             )
         }
 
-        HorizontalDivider(color = Color(0xFFF5F6F7))
+        Divider(color = Color(0xFFF5F6F7))
 
         ListItem(
             headlineContent = { Text("Etiquetar personas") },
@@ -609,14 +612,9 @@ fun AddVideoScreen(onBack: () -> Unit) {
 }
 
 @Composable
-fun HorizontalDivider(color: Color) {
-    TODO("Not yet implemented")
-}
-
-@Composable
 fun ProfileScreen() {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf(Icons.Default.GridOn, Icons.Default.PlayCircleFilled, Icons.Default.PersonPin)
+    val tabs = listOf(Icons.Default.GridOn, Icons.Default.PlayCircle, Icons.Default.PersonPin)
 
     Column(
         modifier = Modifier
@@ -751,27 +749,27 @@ fun ProfileStat(label: String, value: String) {
 fun PhotoItem(photo: Photo) {
     Box(
         modifier = Modifier
+            .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFFE6E8EA))
     ) {
         Image(
-            painter = rememberAsyncImagePainter(
-                photo.url,
-                onState = { state ->
-                }),
+            painter = rememberAsyncImagePainter(photo.url),
             contentDescription = photo.alt,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
                 .aspectRatio(if (photo.id.toInt() % 2 == 0) 0.8f else 1.2f),
-            contentScale = ContentScale.FillWidth
+            contentScale = ContentScale.Crop
         )
 
+        // Overlay de degradado para los textos
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),
-                        startY = 300f
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f)),
+                        startY = 100f
                     )
                 )
         )
