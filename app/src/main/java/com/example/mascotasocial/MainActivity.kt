@@ -5,7 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -44,6 +47,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.mascotasocial.ui.theme.MascotaSocialTheme
+import android.net.Uri
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import androidx.media3.common.util.UnstableApi
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,13 +94,39 @@ sealed class Screen(val route: String, val label: String, val icon: androidx.com
     object Photos : Screen("photos", "Fotos", Icons.Default.Photo)
     object Videos : Screen("videos", "Videos", Icons.Default.PlayCircle)
     object Profile : Screen("profile", "Perfil", Icons.Default.Person)
-    object AddVideo : Screen("add_video", "Añadir", Icons.Default.Add)
+    object AddVideo : Screen("add_video", "Video", Icons.Default.PlayCircle)
+    object AddPhoto : Screen("add_photo", "Foto", Icons.Default.AddAPhoto)
+    object EditProfile : Screen("edit_profile", "Editar Perfil", Icons.Default.Edit)
 }
+
+data class UserProfile(
+    val ownerName: String,
+    val petName: String,
+    val breed: String,
+    val location: String,
+    val email: String,
+    val phone: String
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
+
+    // Estado global simple para el perfil
+    var userProfile by remember {
+        mutableStateOf(
+            UserProfile(
+                ownerName = "Christian Gualteros",
+                petName = "Toby",
+                breed = "Golden Retriever",
+                location = "Bogotá, Colombia",
+                email = "christiangualteros36@gmail.com",
+                phone = "+57 313 377 6590"
+            )
+        )
+    }
+
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -143,13 +183,43 @@ fun MainScreen() {
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { navController.navigate(Screen.AddVideo.route) },
-                    containerColor = Color(0xFF964300),
-                    contentColor = Color.White,
-                    shape = CircleShape
-                ) {
-                    Icon(Icons.Default.AddAPhoto, null)
+                var showAddMenu by remember { mutableStateOf(false) }
+
+                Column(horizontalAlignment = Alignment.End) {
+                    if (showAddMenu) {
+                        SmallFloatingActionButton(
+                            onClick = {
+                                showAddMenu = false
+                                navController.navigate(Screen.AddVideo.route)
+                            },
+                            containerColor = Color(0xFFF9873E),
+                            contentColor = Color.White,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            Icon(Icons.Default.VideoCall, null)
+                        }
+                        SmallFloatingActionButton(
+                            onClick = {
+                                showAddMenu = false
+                                navController.navigate(Screen.AddPhoto.route)
+                            },
+                            containerColor = Color(0xFFF9873E),
+                            contentColor = Color.White,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            Icon(Icons.Default.AddAPhoto, null)
+                        }
+                    }
+
+                    FloatingActionButton(
+                        onClick = { showAddMenu = !showAddMenu },
+                        containerColor = Color(0xFF964300),
+                        contentColor = Color.White,
+                        shape = CircleShape
+                    ) {
+                        val icon = if (showAddMenu) Icons.Default.Close else Icons.Default.Add
+                        Icon(icon, null)
+                    }
                 }
             }
         ) { padding ->
@@ -161,8 +231,160 @@ fun MainScreen() {
                 composable(Screen.Home.route) { HomeScreen() }
                 composable(Screen.Photos.route) { PhotosScreen() }
                 composable(Screen.Videos.route) { VideosScreen() }
-                composable(Screen.Profile.route) { ProfileScreen() }
+                composable(Screen.Profile.route) {
+                    ProfileScreen(
+                        profile = userProfile,
+                        onEditProfile = { navController.navigate(Screen.EditProfile.route) }
+                    )
+                }
                 composable(Screen.AddVideo.route) { AddVideoScreen(onBack = { navController.popBackStack() }) }
+                composable(Screen.AddPhoto.route) { AddPhotoScreen(onBack = { navController.popBackStack() }) }
+                composable(Screen.EditProfile.route) {
+                    EditProfileScreen(
+                        profile = userProfile,
+                        onBack = { navController.popBackStack() },
+                        onSave = { updatedProfile ->
+                            userProfile = updatedProfile
+                            navController.popBackStack()
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditProfileScreen(
+    profile: UserProfile,
+    onBack: () -> Unit,
+    onSave: (UserProfile) -> Unit
+) {
+    var ownerName by remember { mutableStateOf(profile.ownerName) }
+    var petName by remember { mutableStateOf(profile.petName) }
+    var breed by remember { mutableStateOf(profile.breed) }
+    var location by remember { mutableStateOf(profile.location) }
+    var email by remember { mutableStateOf(profile.email) }
+    var phone by remember { mutableStateOf(profile.phone) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White)
+    ) {
+        TopAppBar(
+            title = { Text("Editar Perfil", fontWeight = FontWeight.Bold) },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.Close, null)
+                }
+            },
+            actions = {
+                TextButton(
+                    onClick = {
+                        onSave(
+                            UserProfile(
+                                ownerName = ownerName,
+                                petName = petName,
+                                breed = breed,
+                                location = location,
+                                email = email,
+                                phone = phone
+                            )
+                        )
+                    }
+                ) {
+                    Text("Guardar", fontWeight = FontWeight.Bold, color = Color(0xFF964300))
+                }
+            }
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Sección Dueño y Mascota
+            Text("Información Básica", fontWeight = FontWeight.Bold, color = Color.Gray)
+
+            OutlinedTextField(
+                value = ownerName,
+                onValueChange = { ownerName = it },
+                label = { Text("Nombre del Dueño") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            OutlinedTextField(
+                value = petName,
+                onValueChange = { petName = it },
+                label = { Text("Nombre de la Mascota") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            OutlinedTextField(
+                value = breed,
+                onValueChange = { breed = it },
+                label = { Text("Raza") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(Modifier.height(8.dp))
+            Text("Contacto y Ubicación", fontWeight = FontWeight.Bold, color = Color.Gray)
+
+            OutlinedTextField(
+                value = location,
+                onValueChange = { location = it },
+                label = { Text("Ubicación") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                leadingIcon = { Icon(Icons.Default.LocationOn, null, tint = Color(0xFF964300)) }
+            )
+
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                leadingIcon = { Icon(Icons.Default.Email, null, tint = Color(0xFF964300)) }
+            )
+
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { phone = it },
+                label = { Text("Teléfono") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                leadingIcon = { Icon(Icons.Default.Phone, null, tint = Color(0xFF964300)) }
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            Button(
+                onClick = {
+                    onSave(
+                        UserProfile(
+                            ownerName = ownerName,
+                            petName = petName,
+                            breed = breed,
+                            location = location,
+                            email = email,
+                            phone = phone
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF964300)),
+                contentPadding = PaddingValues(16.dp)
+            ) {
+                Text("Actualizar Perfil", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -170,6 +392,9 @@ fun MainScreen() {
 
 @Composable
 fun HomeScreen() {
+    val context = LocalContext.current
+    var urlText by remember { mutableStateOf("") }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -177,6 +402,65 @@ fun HomeScreen() {
         contentPadding = PaddingValues(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Explorar la Web",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color(0xFF964300)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = urlText,
+                            onValueChange = { urlText = it },
+                            placeholder = { Text(
+                                text = "https://example.com",
+                                fontSize = 9.sp
+                            ) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (urlText.isNotBlank()) {
+                                    val formattedUrl = if (!urlText.startsWith("http://") && !urlText.startsWith("https://")) {
+                                        "https://$urlText"
+                                    } else {
+                                        urlText
+                                    }
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(formattedUrl))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        // Handle error if no browser found or invalid URL
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF964300))
+                        ) {
+                            Text("Abrir")
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             Column(Modifier.padding(top = 16.dp)) {
                 Text(
@@ -366,7 +650,7 @@ fun PhotosScreen() {
         val filteredPhotos = if (activeCategory == "Todos") PHOTOS else PHOTOS.filter { it.category == activeCategory }
 
         LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(2),
+            columns = StaggeredGridCells.Fixed(1),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -374,6 +658,121 @@ fun PhotosScreen() {
         ) {
             items(filteredPhotos) { photo ->
                 PhotoItem(photo)
+            }
+        }
+    }
+}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+fun VideoPlayer(videoUrl: String, isVisible: Boolean, placeholderUrl: String) {
+    val context = LocalContext.current
+    var isLoading by remember { mutableStateOf(true) }
+    var hasError by remember { mutableStateOf(false) }
+
+    val exoPlayer = remember(videoUrl) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(videoUrl))
+            repeatMode = Player.REPEAT_MODE_ONE
+            prepare()
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    isLoading = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
+                }
+
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    hasError = true
+                    isLoading = false
+                }
+            })
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    LaunchedEffect(isVisible) {
+        if (isVisible) {
+            exoPlayer.play()
+        } else {
+            exoPlayer.pause()
+        }
+    }
+
+    var isPlaying by remember { mutableStateOf(exoPlayer.isPlaying) }
+
+    // Escuchar cambios en el estado de reproducción
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable {
+                if (exoPlayer.isPlaying) {
+                    exoPlayer.pause()
+                } else {
+                    exoPlayer.play()
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        // Placeholder image while loading
+        if (isLoading || hasError) {
+            Image(
+                painter = rememberAsyncImagePainter(placeholderUrl),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        if (!hasError) {
+            AndroidView(
+                factory = {
+                    PlayerView(context).apply {
+                        player = exoPlayer
+                        useController = true // Habilitar controles estándar
+                        controllerAutoShow = true
+                        controllerHideOnTouch = true
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Indicador de pausa (icono grande al centro)
+        if (!isPlaying && !isLoading && !hasError) {
+            Icon(
+                Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.size(80.dp)
+            )
+        }
+
+        if (isLoading) {
+            CircularProgressIndicator(color = Color.White)
+        }
+
+        if (hasError) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Error, null, tint = Color.White, modifier = Modifier.size(48.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("Error al cargar video", color = Color.White)
             }
         }
     }
@@ -389,7 +788,7 @@ fun VideosScreen() {
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
-            VideoPlayerPlaceholder(PHOTOS[page])
+            VideoPage(PHOTOS[page], isVisible = pagerState.currentPage == page, pageIndex = page)
         }
 
         // Top Header Overlay
@@ -410,13 +809,22 @@ fun VideosScreen() {
 }
 
 @Composable
-fun VideoPlayerPlaceholder(photo: Photo) {
+fun VideoPage(photo: Photo, isVisible: Boolean, pageIndex: Int) {
+    // Lista de videos públicos muy estables de Google
+    val publicVideos = listOf(
+        "https://www.w3schools.com/html/mov_bbb.mp4",
+        "https://vjs.zencdn.net/v/oceans.mp4",
+        "https://www.w3schools.com/html/movie.mp4",
+        "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4"
+    )
+
+    val sampleVideoUrl = publicVideos[pageIndex % publicVideos.size]
+
     Box(modifier = Modifier.fillMaxSize()) {
-        Image(
-            painter = rememberAsyncImagePainter(photo.url),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
+        VideoPlayer(
+            videoUrl = sampleVideoUrl,
+            isVisible = isVisible,
+            placeholderUrl = photo.url
         )
 
         // Gradient for readability
@@ -462,9 +870,9 @@ fun VideoPlayerPlaceholder(photo: Photo) {
                 }
             }
 
-            VideoAction(Icons.Default.Favorite, "1.2k")
-            VideoAction(Icons.Default.ChatBubble, "45")
-            VideoAction(Icons.Default.Bookmark, "12")
+            VideoAction(Icons.Default.Favorite, photo.likes)
+            VideoAction(Icons.Default.ChatBubble, (photo.id.toInt() * 12).toString())
+            VideoAction(Icons.Default.Bookmark, (photo.id.toInt() * 5).toString())
             VideoAction(Icons.Default.Share, "Share")
 
             // Rotating Music Disc (Static for now)
@@ -486,10 +894,10 @@ fun VideoPlayerPlaceholder(photo: Photo) {
                 .align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 20.dp, end = 80.dp)
         ) {
-            Text("@Mascota_Fan", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text("@Usuario_Pet", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Spacer(Modifier.height(8.dp))
             Text(
-                "¡Mirad qué salto! Mi perro es un atleta profesional 🐾 #perros #salto #mascotas",
+                "¡Mirad qué salto! Mi mascota es un atleta profesional 🐾 #mascotas #divertido #video",
                 color = Color.White,
                 fontSize = 14.sp,
                 maxLines = 2
@@ -498,7 +906,7 @@ fun VideoPlayerPlaceholder(photo: Photo) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.MusicNote, null, tint = Color.White, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Sonido original - Mascota_Fan", color = Color.White, fontSize = 12.sp)
+                Text("Audio original - MascotaSocial", color = Color.White, fontSize = 13.sp)
             }
         }
 
@@ -525,8 +933,117 @@ fun VideoAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: St
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun AddPhotoScreen(onBack: () -> Unit) {
+    var caption by remember { mutableStateOf("") }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedImageUri = uri
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White)
+    ) {
+        TopAppBar(
+            title = { Text("Nueva Foto", fontWeight = FontWeight.Bold) },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.Close, null)
+                }
+            },
+            actions = {
+                TextButton(onClick = { onBack() }) {
+                    Text("Publicar", fontWeight = FontWeight.Bold, color = Color(0xFF964300))
+                }
+            }
+        )
+
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            // Image Preview (con clic para seleccionar)
+            Box(
+                modifier = Modifier
+                    .size(100.dp, 100.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.LightGray)
+                    .clickable { imagePickerLauncher.launch("image/*") },
+                contentAlignment = Alignment.Center
+            ) {
+                if (selectedImageUri != null) {
+                    Image(
+                        painter = rememberAsyncImagePainter(selectedImageUri),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.AddAPhoto, null, tint = Color.White, modifier = Modifier.size(32.dp))
+                        Text("Seleccionar", color = Color.White, fontSize = 10.sp)
+                    }
+                }
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            TextField(
+                value = caption,
+                onValueChange = { caption = it },
+                placeholder = { Text("¿Qué mascota es esta? Escribe una descripción...") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = TextFieldDefaults.textFieldColors(
+                    containerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
+                )
+            )
+        }
+
+        Divider(color = Color(0xFFF5F6F7))
+
+        ListItem(
+            headlineContent = { Text("Etiquetar personas") },
+            leadingContent = { Icon(Icons.Default.Person, null) },
+            trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+            modifier = Modifier.clickable { }
+        )
+        ListItem(
+            headlineContent = { Text("Ubicación") },
+            leadingContent = { Icon(Icons.Default.LocationOn, null) },
+            trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+            modifier = Modifier.clickable { }
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            "Tu foto se compartirá con tus seguidores y podrá aparecer en la sección de Fotos.",
+            modifier = Modifier.padding(16.dp),
+            fontSize = 12.sp,
+            color = Color.Gray
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun AddVideoScreen(onBack: () -> Unit) {
     var caption by remember { mutableStateOf("") }
+    var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
+
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedVideoUri = uri
+    }
 
     Column(
         modifier = Modifier
@@ -553,15 +1070,26 @@ fun AddVideoScreen(onBack: () -> Unit) {
                 .fillMaxWidth(),
             verticalAlignment = Alignment.Top
         ) {
-            // Video Preview Placeholder
+            // Video Preview (con clic para seleccionar)
             Box(
                 modifier = Modifier
                     .size(100.dp, 150.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.LightGray),
+                    .background(Color.LightGray)
+                    .clickable { videoPickerLauncher.launch("video/*") },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(48.dp))
+                if (selectedVideoUri != null) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF964300), modifier = Modifier.size(48.dp))
+                        Text("Listp", color = Color(0xFF964300), fontSize = 10.sp)
+                    }
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(48.dp))
+                        Text("Seleccionar", color = Color.White, fontSize = 10.sp)
+                    }
+                }
             }
 
             Spacer(Modifier.width(16.dp))
@@ -580,6 +1108,15 @@ fun AddVideoScreen(onBack: () -> Unit) {
         }
 
         Divider(color = Color(0xFFF5F6F7))
+
+        if (selectedVideoUri != null) {
+            Text(
+                "Video seleccionado: ${selectedVideoUri!!.lastPathSegment}",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                fontSize = 12.sp,
+                color = Color.DarkGray
+            )
+        }
 
         ListItem(
             headlineContent = { Text("Etiquetar personas") },
@@ -612,7 +1149,7 @@ fun AddVideoScreen(onBack: () -> Unit) {
 }
 
 @Composable
-fun ProfileScreen() {
+fun ProfileScreen(profile: UserProfile, onEditProfile: () -> Unit) {
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf(Icons.Default.GridOn, Icons.Default.PlayCircle, Icons.Default.PersonPin)
 
@@ -653,7 +1190,12 @@ fun ProfileScreen() {
                                 .background(Color(0xFFE6E8EA)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Pets, null, tint = Color(0xFF964300), modifier = Modifier.size(40.dp))
+                            Image(
+                                painter = rememberAsyncImagePainter("https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&q=80&w=200"),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
                         }
                     }
                 }
@@ -670,28 +1212,48 @@ fun ProfileScreen() {
 
             Spacer(Modifier.height(12.dp))
 
-            Text("Mascota Lover", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("Amante de los animales 🐾 | Fotógrafo de mascotas", fontSize = 14.sp)
-            Text("www.mascotalover.com", color = Color(0xFF005DA7), fontSize = 14.sp)
+            Text("${profile.ownerName} & ${profile.petName}", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2C2F30))
+            Text("${profile.breed} 🐾", fontSize = 16.sp, color = Color(0xFF964300), fontWeight = FontWeight.Bold)
+
+            Spacer(Modifier.height(12.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                ProfileInfoItem(Icons.Default.LocationOn, profile.location)
+                ProfileInfoItem(Icons.Default.Email, profile.email)
+                ProfileInfoItem(Icons.Default.Phone, profile.phone)
+            }
 
             Spacer(Modifier.height(20.dp))
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(
-                    onClick = { },
+                    onClick = onEditProfile,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE6E8EA), contentColor = Color.Black)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF964300),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
+                    Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text("Editar perfil", fontWeight = FontWeight.Bold)
                 }
-                Button(
+                OutlinedButton(
                     onClick = { },
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE6E8EA), contentColor = Color.Black)
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFF964300)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF964300)),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
-                    Text("Compartir perfil", fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Compartir", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -747,11 +1309,14 @@ fun ProfileStat(label: String, value: String) {
 
 @Composable
 fun PhotoItem(photo: Photo) {
+    var showDescription by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFFE6E8EA))
+            .clickable { showDescription = !showDescription }
     ) {
         Image(
             painter = rememberAsyncImagePainter(photo.url),
@@ -768,11 +1333,36 @@ fun PhotoItem(photo: Photo) {
                 .matchParentSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f)),
+                        colors = if (showDescription)
+                            listOf(Color.Black.copy(alpha = 0.3f), Color.Black.copy(alpha = 0.7f))
+                        else
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f)),
                         startY = 100f
                     )
                 )
         )
+
+        if (showDescription) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        photo.alt,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
 
         Row(
             modifier = Modifier
@@ -818,6 +1408,15 @@ fun PhotoItem(photo: Photo) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ProfileInfoItem(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = Color(0xFF964300), modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, fontSize = 14.sp, color = Color.Gray)
     }
 }
 
